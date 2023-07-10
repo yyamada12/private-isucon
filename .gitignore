@@ -1,0 +1,8 @@
+.*
+!.gitignore
+!.bashrc
+!.alias.bash
+/pprof
+private_isu.git/
+go/
+backup/
