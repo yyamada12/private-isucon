@@ -123,3 +123,5 @@ source ~/.alias.bash
 stty stop undef
 
 export SLACK_TOKEN=xoxp-5533660660167-5571914187888-5571920787664-20c88d9185577954e284498264496986
+export PATH=$PATH:/usr/local/go/bin
+
