@@ -47,4 +47,4 @@ alias ppb='go tool pprof -http=":1234" http://localhost:6060/debug/pprof/profile
 
 # app
 alias deploy='~/deploy.sh'
-alias applog='sudo journalctl -f -u'
+alias applog='sudo journalctl -f -u isu-go'
