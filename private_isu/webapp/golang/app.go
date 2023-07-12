@@ -173,14 +173,49 @@ func getFlash(w http.ResponseWriter, r *http.Request, key string) string {
 	}
 }
 
+func getCommentCounts(postIDs []int) (map[int]int, error) {
+	type commentCount struct {
+		PostID       int `db:"post_id"`
+		CommentCount int `db:"count"`
+	}
+
+	qs, params, err := sqlx.In("SELECT `post_id`, COUNT(*) AS `count` FROM `comments` WHERE `post_id` IN (?) GROUP BY `post_id`", postIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	commentCounts := []commentCount{}
+	if err := db.Select(&commentCounts, qs, params...); err != nil {
+		return nil, err
+	}
+
+	res := make(map[int]int)
+	for _, c := range commentCounts {
+		res[c.PostID] = c.CommentCount
+	}
+
+	return res, nil
+}
+
 func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, error) {
 	var posts []Post
 
+	postIDs := []int{}
+	for _, post := range results {
+		postIDs = append(postIDs, post.ID)
+	}
+
+	commentCounts, err := getCommentCounts(postIDs)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	for _, p := range results {
-		err := db.Get(&p.CommentCount, "SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?", p.ID)
-		if err != nil {
-			return nil, err
-		}
+		// err := db.Get(&p.CommentCount, "SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?", p.ID)
+		// if err != nil {
+		// 	return nil, err
+		// }
+		p.CommentCount = commentCounts[p.ID]
 
 		query := "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC"
 		if !allComments {
