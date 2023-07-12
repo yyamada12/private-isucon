@@ -1,6 +1,6 @@
 .*
 !.gitignore
-!.bashrc
+.bashrc
 !.alias.bash
 /pprof
 private_isu.git/
