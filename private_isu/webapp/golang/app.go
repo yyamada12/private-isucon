@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
@@ -68,6 +69,35 @@ type Comment struct {
 	User      User
 }
 
+type PostsList struct {
+	posts []Post
+	mu    sync.RWMutex
+}
+
+func (pl *PostsList) Add(p Post) {
+	pl.mu.Lock()
+	defer pl.mu.Unlock()
+	pl.posts = append(pl.posts, p)
+}
+
+func (pl *PostsList) Get() []Post {
+	pl.mu.RLock()
+	defer pl.mu.RUnlock()
+	return pl.posts
+}
+
+var postsList PostsList
+
+func initPostsList() {
+	results := []Post{}
+	err := db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` ORDER BY `created_at` DESC")
+	if err != nil {
+		log.Print(err)
+		return
+	}
+	postsList = PostsList{posts: results}
+}
+
 func init() {
 	memdAddr := os.Getenv("ISUCONP_MEMCACHED_ADDRESS")
 	if memdAddr == "" {
@@ -90,6 +120,8 @@ func dbInitialize() {
 	for _, sql := range sqls {
 		db.Exec(sql)
 	}
+
+	initPostsList()
 }
 
 func tryLogin(accountName, password string) *User {
@@ -196,6 +228,32 @@ func getCommentCounts(postIDs []int) (map[int]int, error) {
 
 	return res, nil
 }
+
+// func getComments(postIDs []int, allComments bool) (map[int][]Comment, error) {
+// 	var qs string
+// 	var params []interface{}
+// 	var err error
+// 	if allComments {
+
+// 	} else {
+// 		qs, params, err = sqlx.In("SELECT `post_id`, COUNT(*) AS `count` FROM `comments` WHERE `post_id` IN (?) GROUP BY `post_id`", postIDs)
+// 	}
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	commentCounts := []commentCount{}
+// 	if err := db.Select(&commentCounts, qs, params...); err != nil {
+// 		return nil, err
+// 	}
+
+// 	res := make(map[int]int)
+// 	for _, c := range commentCounts {
+// 		res[c.PostID] = c.CommentCount
+// 	}
+
+// 	return res, nil
+// }
 
 func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, error) {
 	var posts []Post
@@ -421,13 +479,14 @@ func getLogout(w http.ResponseWriter, r *http.Request) {
 func getIndex(w http.ResponseWriter, r *http.Request) {
 	me := getSessionUser(r)
 
-	results := []Post{}
+	// results := []Post{}
 
-	err := db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` ORDER BY `created_at` DESC")
-	if err != nil {
-		log.Print(err)
-		return
-	}
+	// err := db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` ORDER BY `created_at` DESC")
+	// if err != nil {
+	// 	log.Print(err)
+	// 	return
+	// }
+	results := postsList.Get()
 
 	posts, err := makePosts(results, getCSRFToken(r), false)
 	if err != nil {
@@ -704,6 +763,16 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	post := Post{
+		ID:        int(pid),
+		UserID:    me.ID,
+		Imgdata:   filedata,
+		Body:      r.FormValue("body"),
+		Mime:      mime,
+		CreatedAt: time.Now(),
+	}
+	postsList.Add(post)
+
 	http.Redirect(w, r, "/posts/"+strconv.FormatInt(pid, 10), http.StatusFound)
 }
 
@@ -869,6 +938,8 @@ func main() {
 		log.Fatalf("Failed to connect to DB: %s.", err.Error())
 	}
 	defer db.Close()
+
+	initPostsList()
 
 	r := chi.NewRouter()
 
