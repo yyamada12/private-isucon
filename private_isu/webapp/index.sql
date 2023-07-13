@@ -1,0 +1,1 @@
+alter table comments add index idx_post_id_created_at(post_id, created_at);
