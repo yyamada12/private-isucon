@@ -136,6 +136,42 @@ func initCommentsList() {
 	commentsMap = CommentsMap{comments: m}
 }
 
+type UsersMap struct {
+	users map[int]User
+	mu    sync.RWMutex
+}
+
+func (um *UsersMap) Put(u User) {
+	um.mu.Lock()
+	defer um.mu.Unlock()
+	um.users[u.ID] = u
+}
+
+func (um *UsersMap) Get(uid int) User {
+	um.mu.RLock()
+	defer um.mu.RUnlock()
+	return um.users[uid]
+}
+
+var usersMap UsersMap
+
+func initUsersList() {
+
+	var users []User
+	err := db.Select(&users, "SELECT * FROM `users`")
+	if err != nil {
+		log.Print(err)
+		return
+	}
+
+	m := map[int]User{}
+	for _, u := range users {
+		m[u.ID] = u
+	}
+
+	usersMap = UsersMap{users: m}
+}
+
 func init() {
 	memdAddr := os.Getenv("ISUCONP_MEMCACHED_ADDRESS")
 	if memdAddr == "" {
@@ -161,6 +197,7 @@ func dbInitialize() {
 
 	initPostsList()
 	initCommentsList()
+	initUsersList()
 }
 
 func tryLogin(accountName, password string) *User {
@@ -331,10 +368,11 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 		}
 
 		for i := 0; i < len(comments); i++ {
-			err := db.Get(&comments[i].User, "SELECT * FROM `users` WHERE `id` = ?", comments[i].UserID)
-			if err != nil {
-				return nil, err
-			}
+			comments[i].User = usersMap.Get(comments[i].UserID)
+			// err := db.Get(&comments[i].User, "SELECT * FROM `users` WHERE `id` = ?", comments[i].UserID)
+			// if err != nil {
+			// 	return nil, err
+			// }
 		}
 
 		// reverse
@@ -505,6 +543,14 @@ func postRegister(w http.ResponseWriter, r *http.Request) {
 		log.Print(err)
 		return
 	}
+
+	user := User{
+		ID:          int(uid),
+		AccountName: accountName,
+		CreatedAt:   time.Time{},
+	}
+	usersMap.Put(user)
+
 	session.Values["user_id"] = uid
 	session.Values["csrf_token"] = secureRandomStr(16)
 	session.Save(r, w)
@@ -1001,6 +1047,7 @@ func main() {
 
 	initPostsList()
 	initCommentsList()
+	initUsersList()
 
 	r := chi.NewRouter()
 
