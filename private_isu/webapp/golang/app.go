@@ -98,6 +98,44 @@ func initPostsList() {
 	postsList = PostsList{posts: results}
 }
 
+type CommentsMap struct {
+	comments map[int][]Comment
+	mu       sync.RWMutex
+}
+
+func (cm *CommentsMap) Add(c Comment) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	l := cm.comments[c.PostID]
+	l = append(l, c)
+	cm.comments[c.PostID] = l
+}
+
+func (cm *CommentsMap) Get(pid int) []Comment {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.comments[pid]
+}
+
+var commentsMap CommentsMap
+
+func initCommentsList() {
+
+	var comments []Comment
+	err := db.Select(&comments, "SELECT * FROM `comments` ORDER BY `created_at` DESC")
+	if err != nil {
+		log.Print(err)
+		return
+	}
+
+	m := map[int][]Comment{}
+	for _, c := range comments {
+		m[c.PostID] = append(m[c.PostID], c)
+	}
+
+	commentsMap = CommentsMap{comments: m}
+}
+
 func init() {
 	memdAddr := os.Getenv("ISUCONP_MEMCACHED_ADDRESS")
 	if memdAddr == "" {
@@ -122,6 +160,7 @@ func dbInitialize() {
 	}
 
 	initPostsList()
+	initCommentsList()
 }
 
 func tryLogin(accountName, password string) *User {
@@ -205,29 +244,29 @@ func getFlash(w http.ResponseWriter, r *http.Request, key string) string {
 	}
 }
 
-func getCommentCounts(postIDs []int) (map[int]int, error) {
-	type commentCount struct {
-		PostID       int `db:"post_id"`
-		CommentCount int `db:"count"`
-	}
+// func getCommentCounts(postIDs []int) (map[int]int, error) {
+// 	type commentCount struct {
+// 		PostID       int `db:"post_id"`
+// 		CommentCount int `db:"count"`
+// 	}
 
-	qs, params, err := sqlx.In("SELECT `post_id`, COUNT(*) AS `count` FROM `comments` WHERE `post_id` IN (?) GROUP BY `post_id`", postIDs)
-	if err != nil {
-		return nil, err
-	}
+// 	qs, params, err := sqlx.In("SELECT `post_id`, COUNT(*) AS `count` FROM `comments` WHERE `post_id` IN (?) GROUP BY `post_id`", postIDs)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	commentCounts := []commentCount{}
-	if err := db.Select(&commentCounts, qs, params...); err != nil {
-		return nil, err
-	}
+// 	commentCounts := []commentCount{}
+// 	if err := db.Select(&commentCounts, qs, params...); err != nil {
+// 		return nil, err
+// 	}
 
-	res := make(map[int]int)
-	for _, c := range commentCounts {
-		res[c.PostID] = c.CommentCount
-	}
+// 	res := make(map[int]int)
+// 	for _, c := range commentCounts {
+// 		res[c.PostID] = c.CommentCount
+// 	}
 
-	return res, nil
-}
+// 	return res, nil
+// }
 
 // func getComments(postIDs []int, allComments bool) (map[int][]Comment, error) {
 // 	var qs string
@@ -258,31 +297,37 @@ func getCommentCounts(postIDs []int) (map[int]int, error) {
 func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, error) {
 	var posts []Post
 
-	postIDs := []int{}
-	for _, post := range results {
-		postIDs = append(postIDs, post.ID)
-	}
+	// postIDs := []int{}
+	// for _, post := range results {
+	// 	postIDs = append(postIDs, post.ID)
+	// }
 
-	commentCounts, err := getCommentCounts(postIDs)
-	if err != nil {
-		log.Fatal(err)
-	}
+	// commentCounts, err := getCommentCounts(postIDs)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
 
 	for _, p := range results {
 		// err := db.Get(&p.CommentCount, "SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?", p.ID)
 		// if err != nil {
 		// 	return nil, err
 		// }
-		p.CommentCount = commentCounts[p.ID]
+		// p.CommentCount = commentCounts[p.ID]
 
-		query := "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC"
-		if !allComments {
-			query += " LIMIT 3"
-		}
-		var comments []Comment
-		err = db.Select(&comments, query, p.ID)
-		if err != nil {
-			return nil, err
+		// query := "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC"
+		// if !allComments {
+		// 	query += " LIMIT 3"
+		// }
+		// var comments []Comment
+		// err = db.Select(&comments, query, p.ID)
+		// if err != nil {
+		// 	return nil, err
+		// }
+
+		comments := commentsMap.Get(p.ID)
+		p.CommentCount = len(comments)
+		if !allComments && len(comments) >= 3 {
+			comments = comments[len(comments)-3:]
 		}
 
 		for i := 0; i < len(comments); i++ {
@@ -299,7 +344,7 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 
 		p.Comments = comments
 
-		err = db.Get(&p.User, "SELECT * FROM `users` WHERE `id` = ?", p.UserID)
+		err := db.Get(&p.User, "SELECT * FROM `users` WHERE `id` = ?", p.UserID)
 		if err != nil {
 			return nil, err
 		}
@@ -827,11 +872,26 @@ func postComment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := "INSERT INTO `comments` (`post_id`, `user_id`, `comment`) VALUES (?,?,?)"
-	_, err = db.Exec(query, postID, me.ID, r.FormValue("comment"))
+	result, err := db.Exec(query, postID, me.ID, r.FormValue("comment"))
 	if err != nil {
 		log.Print(err)
 		return
 	}
+
+	cid, err := result.LastInsertId()
+	if err != nil {
+		log.Print(err)
+		return
+	}
+
+	comment := Comment{
+		ID:        int(cid),
+		PostID:    postID,
+		UserID:    me.ID,
+		Comment:   r.FormValue("comment"),
+		CreatedAt: time.Now(),
+	}
+	commentsMap.Add(comment)
 
 	http.Redirect(w, r, fmt.Sprintf("/posts/%d", postID), http.StatusFound)
 }
@@ -940,6 +1000,7 @@ func main() {
 	defer db.Close()
 
 	initPostsList()
+	initCommentsList()
 
 	r := chi.NewRouter()
 
