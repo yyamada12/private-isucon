@@ -70,20 +70,39 @@ type Comment struct {
 }
 
 type PostsList struct {
-	posts []Post
-	mu    sync.RWMutex
+	posts    []Post
+	postsMap map[int]Post
+	mu       sync.RWMutex
+	mu2      sync.RWMutex
 }
 
 func (pl *PostsList) Add(p Post) {
+	pl.AddToList(p)
+	pl.AddToMap(p)
+}
+
+func (pl *PostsList) AddToList(p Post) {
 	pl.mu.Lock()
 	defer pl.mu.Unlock()
 	pl.posts = append(pl.posts, p)
 }
 
-func (pl *PostsList) Get() []Post {
+func (pl *PostsList) AddToMap(p Post) {
+	pl.mu2.Lock()
+	defer pl.mu2.Unlock()
+	pl.postsMap[p.ID] = p
+}
+
+func (pl *PostsList) GetAll() []Post {
 	pl.mu.RLock()
 	defer pl.mu.RUnlock()
 	return pl.posts
+}
+
+func (pl *PostsList) Get(pid int) Post {
+	pl.mu.RLock()
+	defer pl.mu.RUnlock()
+	return pl.postsMap[pid]
 }
 
 var postsList PostsList
@@ -95,7 +114,12 @@ func initPostsList() {
 		log.Print(err)
 		return
 	}
-	postsList = PostsList{posts: results}
+	m := map[int]Post{}
+	for _, p := range results {
+		m[p.ID] = p
+	}
+
+	postsList = PostsList{posts: results, postsMap: m}
 }
 
 type CommentsMap struct {
@@ -577,7 +601,7 @@ func getIndex(w http.ResponseWriter, r *http.Request) {
 	// 	log.Print(err)
 	// 	return
 	// }
-	results := postsList.Get()
+	results := postsList.GetAll()
 
 	posts, err := makePosts(results, getCSRFToken(r), false)
 	if err != nil {
@@ -875,12 +899,13 @@ func getImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	post := Post{}
-	err = db.Get(&post, "SELECT * FROM `posts` WHERE `id` = ?", pid)
-	if err != nil {
-		log.Print(err)
-		return
-	}
+	// post := Post{}
+	// err = db.Get(&post, "SELECT * FROM `posts` WHERE `id` = ?", pid)
+	// if err != nil {
+	// 	log.Print(err)
+	// 	return
+	// }
+	post := postsList.Get(pid)
 
 	ext := chi.URLParam(r, "ext")
 
