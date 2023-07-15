@@ -171,6 +171,14 @@ func (um *UsersMap) Put(u User) {
 	um.users[u.ID] = u
 }
 
+func (um *UsersMap) SetDeleteFlg(uid int) {
+	um.mu.Lock()
+	defer um.mu.Unlock()
+	u := um.users[uid]
+	u.DelFlg = 1
+	um.users[uid] = u
+}
+
 func (um *UsersMap) Get(uid int) User {
 	um.mu.RLock()
 	defer um.mu.RUnlock()
@@ -406,10 +414,12 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 
 		p.Comments = comments
 
-		err := db.Get(&p.User, "SELECT * FROM `users` WHERE `id` = ?", p.UserID)
-		if err != nil {
-			return nil, err
-		}
+		p.User = usersMap.Get(p.UserID)
+
+		// err := db.Get(&p.User, "SELECT * FROM `users` WHERE `id` = ?", p.UserID)
+		// if err != nil {
+		// 	return nil, err
+		// }
 
 		p.CSRFToken = csrfToken
 
@@ -1023,6 +1033,11 @@ func postAdminBanned(w http.ResponseWriter, r *http.Request) {
 
 	for _, id := range r.Form["uid[]"] {
 		db.Exec(query, 1, id)
+		uid, err := strconv.Atoi(id)
+		if err != nil {
+			log.Fatal(err)
+		}
+		usersMap.SetDeleteFlg(uid)
 	}
 
 	http.Redirect(w, r, "/admin/banned", http.StatusFound)
