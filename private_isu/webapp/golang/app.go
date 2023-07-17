@@ -290,12 +290,14 @@ func getSessionUser(r *http.Request) User {
 		return User{}
 	}
 
-	u := User{}
+	u := usersMap.Get(uid.(int))
 
-	err := db.Get(&u, "SELECT * FROM `users` WHERE `id` = ?", uid)
-	if err != nil {
-		return User{}
-	}
+	// u := User{}
+
+	// err := db.Get(&u, "SELECT * FROM `users` WHERE `id` = ?", uid)
+	// if err != nil {
+	// 	return User{}
+	// }
 
 	return u
 }
@@ -585,7 +587,7 @@ func postRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	usersMap.Put(user)
 
-	session.Values["user_id"] = uid
+	session.Values["user_id"] = int(uid)
 	session.Values["csrf_token"] = secureRandomStr(16)
 	session.Save(r, w)
 
