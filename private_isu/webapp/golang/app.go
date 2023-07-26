@@ -691,22 +691,27 @@ func getAccountName(w http.ResponseWriter, r *http.Request) {
 
 	commentedCount := 0
 	if postCount > 0 {
-		s := []string{}
-		for range postIDs {
-			s = append(s, "?")
-		}
-		placeholder := strings.Join(s, ", ")
+		// s := []string{}
+		// for range postIDs {
+		// 	s = append(s, "?")
+		// }
+		// placeholder := strings.Join(s, ", ")
 
-		// convert []int -> []interface{}
-		args := make([]interface{}, len(postIDs))
-		for i, v := range postIDs {
-			args[i] = v
-		}
+		// // convert []int -> []interface{}
+		// args := make([]interface{}, len(postIDs))
+		// for i, v := range postIDs {
+		// 	args[i] = v
+		// }
 
-		err = db.Get(&commentedCount, "SELECT COUNT(*) AS count FROM `comments` WHERE `post_id` IN ("+placeholder+")", args...)
-		if err != nil {
-			log.Print(err)
-			return
+		// err = db.Get(&commentedCount, "SELECT COUNT(*) AS count FROM `comments` WHERE `post_id` IN ("+placeholder+")", args...)
+		// if err != nil {
+		// 	log.Print(err)
+		// 	return
+		// }
+
+		for _, pid := range postIDs {
+			comments := commentsMap.Get(pid)
+			commentedCount += len(comments)
 		}
 	}
 
