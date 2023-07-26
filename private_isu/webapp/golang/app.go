@@ -1052,7 +1052,8 @@ func main() {
 
 	host := os.Getenv("ISUCONP_DB_HOST")
 	if host == "" {
-		host = "192.168.64.11"
+		// host = "192.168.64.11"
+		host = "localhost"
 	}
 	port := os.Getenv("ISUCONP_DB_PORT")
 	if port == "" {
