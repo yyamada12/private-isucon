@@ -790,12 +790,14 @@ func getPostsID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	results := []Post{}
-	err = db.Select(&results, "SELECT * FROM `posts` WHERE `id` = ?", pid)
-	if err != nil {
-		log.Print(err)
-		return
-	}
+	// results := []Post{}
+	// err = db.Select(&results, "SELECT * FROM `posts` WHERE `id` = ?", pid)
+	// if err != nil {
+	// 	log.Print(err)
+	// 	return
+	// }
+	post := postsList.Get(pid)
+	results := []Post{post}
 
 	posts, err := makePosts(results, getCSRFToken(r), true)
 	if err != nil {
