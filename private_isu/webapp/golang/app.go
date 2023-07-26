@@ -100,8 +100,8 @@ func (pl *PostsList) GetAll() []Post {
 }
 
 func (pl *PostsList) Get(pid int) Post {
-	pl.mu.RLock()
-	defer pl.mu.RUnlock()
+	pl.mu2.RLock()
+	defer pl.mu2.RUnlock()
 	return pl.postsMap[pid]
 }
 
@@ -1052,7 +1052,7 @@ func main() {
 
 	host := os.Getenv("ISUCONP_DB_HOST")
 	if host == "" {
-		host = "localhost"
+		host = "192.168.64.11"
 	}
 	port := os.Getenv("ISUCONP_DB_PORT")
 	if port == "" {
@@ -1064,9 +1064,12 @@ func main() {
 	}
 	user := os.Getenv("ISUCONP_DB_USER")
 	if user == "" {
-		user = "root"
+		user = "isuconp"
 	}
 	password := os.Getenv("ISUCONP_DB_PASSWORD")
+	if password == "" {
+		password = "isuconp"
+	}
 	dbname := os.Getenv("ISUCONP_DB_NAME")
 	if dbname == "" {
 		dbname = "isuconp"
